@@ -13,17 +13,17 @@ class Cell(grid.Cell):
 
     def color(self):
         if self.wall:
-            return 'black'
+            return 'BLACK'
         elif self.cellcolor == 1:
-            return 'green'
+            return 'GREEN'
         elif self.cellcolor == 2:
-            return 'red'
+            return 'RED'
         elif self.cellcolor == 3:
-            return 'blue'
+            return 'BLUE'
         elif self.cellcolor == 4:
-            return 'magenta'
+            return 'MAGENTA'
         elif self.cellcolor == 5:
-            return 'yellow'
+            return 'YELLOW'
              
         return None
 
@@ -47,9 +47,10 @@ class Cell(grid.Cell):
 world = grid.World(Cell, map=mymap, directions=4)
 
 body = grid.ContinuousAgent()
-world.add(body, x=1, y=2, dir=2)
+world.add(body, x=1, y=1, dir=2)
 
 import nengo
+import nengo.spa as spa
 import numpy as np 
 
 def move(t, x):
@@ -62,10 +63,11 @@ def move(t, x):
 
 
 #Your model might not be a nengo.Netowrk() - SPA is permitted
-model = nengo.Network()
+
+model = spa.SPA()
 with model:
     env = grid.GridNode(world, dt=0.005)
-
+    
     movement = nengo.Node(move, size_in=2)
     
     #Three sensors for distance to the walls
@@ -76,7 +78,6 @@ with model:
     
     radar = nengo.Ensemble(n_neurons=500, dimensions=3, radius=4)
     nengo.Connection(stim_radar, radar)
-
     #a basic movement function that just avoids walls based
     def movement_func(x):
         turn = x[2] - x[0]
@@ -98,4 +99,22 @@ with model:
     #This node returns the colour of the cell currently occupied. Note that you might want to transform this into 
     #something else (see the assignment)
     current_color = nengo.Node(lambda t:body.cell.cellcolor)
- 
+    
+    # Set Dimension Size
+    D = 32
+    
+    # Create Vocabulary
+    colorVocab = spa.Vocabulary(D)
+    
+    #colorVocab.parse("BLACK+GREEN+RED+BLUE+MAGENTA+YELLOW")
+    colorVocab.parse("COLOR")
+    
+    # Create color SPA module:
+    model.colorChecker = spa.State(D, vocab = colorVocab)
+    
+    # Connect current_color to colorMemory:
+    nengo.Connection(current_color, model.colorChecker.input, transform = colorVocab["COLOR"].v.reshape(D,1))
+    
+    
+    
+    
