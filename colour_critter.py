@@ -106,15 +106,32 @@ with model:
     # Create Vocabulary
     colorVocab = spa.Vocabulary(D)
     
-    #colorVocab.parse("BLACK+GREEN+RED+BLUE+MAGENTA+YELLOW")
-    colorVocab.parse("COLOR")
+    #colorVocab.parse("GREEN+RED+BLUE+MAGENTA+YELLOW")
+    colorVocab.parse("GREEN")
     
-    # Create color SPA module:
-    model.colorChecker = spa.State(D, vocab = colorVocab)
+    # Function to recognize color:
+    def recognizeColor(x, colorVocab = colorVocab, D=32):
+        if x == 1:
+            return colorVocab["GREEN"].v.reshape(D)
+        elif x == 2:
+            return colorVocab["RED"].v.reshape(D)
+        elif x == 3:
+            return colorVocab["BLUE"].v.reshape(D)
+        elif x == 4:
+            return colorVocab["MAGENTA"].v.reshape(D)
+        elif x == 5:
+            return colorVocab["YELLOW"].v.reshape(D)
+        else:
+            return np.zeros(D)
+            
+    # Create color SPA modules:
+    model.colorRecognizer = spa.State(D, vocab = colorVocab)
     
-    # Connect current_color to colorMemory:
-    nengo.Connection(current_color, model.colorChecker.input, transform = colorVocab["COLOR"].v.reshape(D,1))
+    # Connect current_color to colorChecker:
+    nengo.Connection(current_color, model.colorRecognizer.input, function = recognizeColor)
     
-    
-    
-    
+    # Create a memory:
+    model.memory = spa.State(D, feedback=1, vocab = colorVocab, feedback_synapse = 0.4)
+
+    nengo.Connection(model.colorRecognizer.output, model.memory.input)
+    #nengo.Connection(model.memory.output, model.memory.input)
