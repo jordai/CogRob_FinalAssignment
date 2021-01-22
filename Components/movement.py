@@ -1,7 +1,6 @@
 ### IMPORTS ###
 
 import grid
-import random
 import nengo
 import numpy as np 
 import nengo.spa as spa
@@ -13,15 +12,16 @@ import nengo.networks as networks
 MAP="""
 #######
 #  M  #
-#   # #
-#  B# #
+#     #
+#  B  #
 #G Y R#
 #######
 """
 
 N_NEURONS = 50 # Number of neurons for Nengo ensembles
 D = 32 # SPA state dimensionality
-MAX_DIST = 4 # Maximum distance of wall detectors
+
+ROTATION_THRESHOLD = 0.8 # Threshold for random rotation in movement function (higher = less rotation)
 
 
 ### CELL CLASS ###
@@ -99,22 +99,23 @@ with spa.SPA() as model:
         # Define angles for each detector (left, forward, right)
         angles = (np.linspace(-0.5, 0.5, 3) + body.dir) % world.directions
         # Return the distance between the agent and a wall in the given directions
-        return [body.detect(d, max_distance=MAX_DIST)[0] for d in angles]
+        return [body.detect(d, max_distance=4)[0] for d in angles]
     stim_radar = nengo.Node(detect)
     
     # Ensemble that reads sensor values
-    radar = nengo.Ensemble(n_neurons=N_NEURONS*10, dimensions=3, radius=4)
-    nengo.Connection(stim_radar, radar)
+    radar = nengo.Ensemble(n_neurons=N_NEURONS*10, dimensions=4, radius=4)
+    nengo.Connection(stim_radar, radar[0:3])
 
     # Movement function, which outputs (speed, rotation) based on radar values
     def movement_func(x):
-        r = random.uniform(0,1)
-        if r < 0.2:
-            return 0.5, -0.7
-        elif r < 0.4:
-            return 0.5, 0.7
-        else:
-            return 0.5, ((x[2]-0.5)-(x[0]-0.5))/4
+        left, forward, right, random = x
+        # If random value exceeds thresholds, simply turn
+        if random > ROTATION_THRESHOLD:
+            return 0.1, 1
+        elif random < -ROTATION_THRESHOLD:
+            return 0.1, -1
+        # Otherwise, perform simple wall-avoiding behavior
+        return forward - 0.5, right - left
     
     # Movement function is driven only by radar values
     nengo.Connection(radar, movement, function=movement_func)
@@ -131,6 +132,7 @@ with spa.SPA() as model:
     p = nengo.Node(nengo.processes.FilteredNoise(synapse=nengo.synapses.Alpha(0.1)))
     r = nengo.Ensemble(50,1)
     nengo.Connection(p,r)
+    nengo.Connection(r, radar[3])
     
     
 

@@ -1,7 +1,6 @@
 ### IMPORTS ###
 
 import grid
-import random
 import nengo
 import numpy as np 
 import nengo.spa as spa
@@ -19,9 +18,13 @@ MAP="""
 #######
 """
 
+COLORS_TO_FIND = 4 # Number of colors to find before stopping (max. 5)
+
 N_NEURONS = 50 # Number of neurons for Nengo ensembles
 D = 32 # SPA state dimensionality
-MAX_DIST = 4 # Maximum distance of wall detectors
+
+ROTATION_THRESHOLD = 0.8 # Threshold for random rotation in movement function (higher = less rotation)
+STOP_SIM_THRESHOLD = 0.7 # Threshold for stopping (stop if similarity between memory and target exceeds this)
 
 
 ### CELL CLASS ###
@@ -99,23 +102,27 @@ with spa.SPA() as model:
         # Define angles for each detector (left, forward, right)
         angles = (np.linspace(-0.5, 0.5, 3) + body.dir) % world.directions
         # Return the distance between the agent and a wall in the given directions
-        return [body.detect(d, max_distance=MAX_DIST)[0] for d in angles]
+        return [body.detect(d, max_distance=4)[0] for d in angles]
     stim_radar = nengo.Node(detect)
     
-    # Ensemble that reads sensor values
-    radar = nengo.Ensemble(n_neurons=N_NEURONS*10, dimensions=3, radius=4)
-    nengo.Connection(stim_radar, radar)
+    # Node for random values (white noise)
+    random = nengo.Node(nengo.processes.FilteredNoise(synapse=nengo.synapses.Alpha(0.1)))
+    
+    # Ensemble that reads sensor and random values
+    radar = nengo.Ensemble(n_neurons=N_NEURONS*10, dimensions=4, radius=4)
+    nengo.Connection(stim_radar, radar[0:3])
+    nengo.Connection(random, radar[3])
 
     # Movement function, which outputs (speed, rotation) based on radar values
     def movement_func(x):
-        spd = (x[1] - 0.5)*0.3
-        if x[1] < 0.5:
-            return spd, 1
-        if x[0] < 0.5:
-            return spd, random.uniform(0,30)
-        if x[2] < 0.5:
-            return spd, random.uniform(-30,0)
-        return spd, 0
+        left, forward, right, random = x
+        # If random value exceeds thresholds, simply turn
+        if random > ROTATION_THRESHOLD:
+            return 0.1, 1
+        elif random < -ROTATION_THRESHOLD:
+            return 0.1, -1
+        # Otherwise, perform simple wall-avoiding behavior
+        return forward-0.5, right-left
     
     # Movement function is driven only by radar values
     nengo.Connection(radar, movement, function=movement_func)
@@ -211,9 +218,9 @@ with spa.SPA() as model:
     nengo.Connection(model.cconv_gr.output, model.cconv_grbmy.A)
     nengo.Connection(model.cconv_bmy.output, model.cconv_grbmy.B)
      
-    # Specify what the convolved memory looks like when four colors have been encountered
+    # Specify what the convolved memory looks like when the desired number of colors has been encountered
     model.seen_four = spa.State(D, vocab=bool_vocab)
-    model.seen_four_input = spa.Input(seen_four = "TRUE*TRUE*TRUE*TRUE*FALSE")
+    model.seen_four_input = spa.Input(seen_four = ("*TRUE"*(COLORS_TO_FIND)+"*FALSE"*(5-COLORS_TO_FIND))[1:])
     
     # Compare desired and actual memory
     model.comparison = spa.Compare(D, vocab=bool_vocab)
@@ -229,7 +236,7 @@ with spa.SPA() as model:
    
     # Threshold the comparison value, to check if the agent is done
     done = nengo.Ensemble(N_NEURONS,1)
-    nengo.Connection(comparison, done, function = lambda x: x > 0.8)
+    nengo.Connection(comparison, done, function = lambda x: x > STOP_SIM_THRESHOLD)
     
     # Inhibitory connection between "being done" and "moving"
     nengo.Connection(done, radar.neurons, transform = [[-4]]*N_NEURONS*10)
