@@ -105,8 +105,10 @@ with spa.SPA() as model:
         return [body.detect(d, max_distance=4)[0] for d in angles]
     stim_radar = nengo.Node(detect)
     
-    # Node for random values (white noise)
-    random = nengo.Node(nengo.processes.FilteredNoise(synapse=nengo.synapses.Alpha(0.1)))
+    # Node for random values, to perform random rotations (filtered noise)
+    random_process = nengo.processes.FilteredNoise(dist=nengo.dists.Gaussian(0, 0.5), 
+                                                   synapse=nengo.synapses.Alpha(0.1))
+    random = nengo.Node(random_process)
     
     # Ensemble that reads sensor and random values
     radar = nengo.Ensemble(n_neurons=N_NEURONS*10, dimensions=4, radius=4)
@@ -117,41 +119,38 @@ with spa.SPA() as model:
     def movement_func(x):
         left, forward, right, random = x
         # If random value exceeds thresholds, simply turn
-        if random > ROTATION_THRESHOLD:
-            return 0.1, 1
-        elif random < -ROTATION_THRESHOLD:
-            return 0.1, -1
+        if abs(random) > ROTATION_THRESHOLD:
+            rotation = abs(random) - forward/4
+            return 0.1, rotation if random > 0 else -rotation
         # Otherwise, perform simple wall-avoiding behavior
-        return forward-0.5, right-left
+        return forward/4, right - left
     
     # Movement function is driven only by radar values
     nengo.Connection(radar, movement, function=movement_func)
     
     
     ## COLOR DETECTION ##
-
-    # Node that outputs the color of the currently occupied cell
-    current_color = nengo.Node(lambda t:body.cell.cellcolor)
     
     # Vocabulary of colors
     color_vocab = spa.Vocabulary(D, max_similarity=0)
-    color_vocab.parse("GREEN+RED+BLUE+MAGENTA+YELLOW")
+    color_vocab.parse("NONE+GREEN+RED+BLUE+MAGENTA+YELLOW")
     
     # State that outputs the semantic pointer corresponding to the color of the currently occupied cell
     model.color_recognizer = spa.State(D, vocab=color_vocab)
     
-    # Function for converting integers (0-5) to semantic pointers, using the color vocabulary
-    def int_to_pointer(x):
-        return np.zeros(D) if not int(x) else color_vocab[body.cell.color().upper()].v.reshape(D)
-    nengo.Connection(current_color, model.color_recognizer.input, function = int_to_pointer)
+    # Provide pointer corresponding to the color of the current cell as input to color recognizer
+    def color_pointer(t):
+        return body.cell.color().upper() if body.cell.color() else "NONE"
+    model.current_color = spa.Input(color_recognizer=color_pointer)
     
     
     ## COLOR MEMORY ##
     
     # Vocabulary of booleans (true and false)
-    bool_vocab = spa.Vocabulary(D, max_similarity=0, unitary=True)
-    bool_vocab.parse("FALSE+TRUE")
-
+    bool_vocab = spa.Vocabulary(D, unitary=True)
+    bool_vocab.add("FALSE", [1.]+[0.]*(D-1))
+    bool_vocab.parse("TRUE")
+   
     # Memories for all colors (supposed to store TRUE if color encountered, FALSE if not)
     model.green_memory   = spa.State(D, vocab=bool_vocab, label="green")
     model.red_memory     = spa.State(D, vocab=bool_vocab, label="red")
@@ -161,10 +160,7 @@ with spa.SPA() as model:
     
     # Provide initial pointer "FALSE" to all color memories
     def initial_false_input(t):
-        if t < 0.05:
-            return bool_vocab["FALSE"].v.reshape(D)
-        else:
-            return np.zeros(D)
+        return bool_vocab["FALSE"].v.reshape(D) if t < 0.05 else np.zeros(D)
     false_input = nengo.Node(initial_false_input)
     nengo.Connection(false_input, model.green_memory.input)
     nengo.Connection(false_input, model.red_memory.input)
@@ -220,7 +216,7 @@ with spa.SPA() as model:
      
     # Specify what the convolved memory looks like when the desired number of colors has been encountered
     model.seen_four = spa.State(D, vocab=bool_vocab)
-    model.seen_four_input = spa.Input(seen_four = ("*TRUE"*(COLORS_TO_FIND)+"*FALSE"*(5-COLORS_TO_FIND))[1:])
+    model.seen_four_input = spa.Input(seen_four = ("*TRUE"*COLORS_TO_FIND)[1:])
     
     # Compare desired and actual memory
     model.comparison = spa.Compare(D, vocab=bool_vocab)

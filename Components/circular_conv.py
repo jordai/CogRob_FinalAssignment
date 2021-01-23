@@ -6,22 +6,23 @@ import nengo.spa as spa
 D = 32
 N_NEURONS = 50
     
-
+COLORS_TO_FIND = 2
 
 ### SPA MODEL ###
 
 with spa.SPA() as model:
     
    # Vocabulary for "boolean" pointers
-   bool_vocab = spa.Vocabulary(D)
-   bool_vocab.parse("FALSE+TRUE")
+   bool_vocab = spa.Vocabulary(D, unitary=True)
+   bool_vocab.parse("TRUE")
+   bool_vocab.add("FALSE", [1.] + [0.]*(D-1))
     
    # Memories for the five colors
-   model.green_memory   = spa.State(D, vocab=bool_vocab)
-   model.red_memory     = spa.State(D, vocab=bool_vocab)
-   model.blue_memory    = spa.State(D, vocab=bool_vocab)
-   model.magenta_memory = spa.State(D, vocab=bool_vocab)
-   model.yellow_memory  = spa.State(D, vocab=bool_vocab)
+   model.green_memory   = spa.State(D, vocab=bool_vocab, feedback=1, label="green")
+   model.red_memory     = spa.State(D, vocab=bool_vocab, feedback=1, label="red")
+   model.blue_memory    = spa.State(D, vocab=bool_vocab, feedback=1, label="blue")
+   model.magenta_memory = spa.State(D, vocab=bool_vocab, feedback=1, label="magenta")
+   model.yellow_memory  = spa.State(D, vocab=bool_vocab, feedback=1, label="yellow")
    
    # Circular convolutions that combine the color memories
    model.gr_conv    = nengo.networks.CircularConvolution(N_NEURONS,D,label="G*R")
@@ -47,7 +48,7 @@ with spa.SPA() as model:
    
    # Specify what the vector looks like after seeing four colors
    model.seen_four = spa.State(D, vocab=bool_vocab)
-   model.seen_four_input = spa.Input(seen_four = "TRUE*TRUE*TRUE*TRUE*FALSE")
+   model.seen_four_input = spa.Input(seen_four = ("*TRUE"*COLORS_TO_FIND)[1:])
    
    # Compare perfect "seen four" vector to combination of memories
    model.comparison = spa.Compare(D, vocab=bool_vocab)

@@ -2,18 +2,17 @@
 
 import grid
 import nengo
-import numpy as np 
+import numpy as np
 import nengo.spa as spa
-import nengo.networks as networks
 
 
 ### CONSTANTS ###
 
 MAP="""
 #######
-#  M  #
 #     #
-#  B  #
+# # # #
+# #B# #
 #G Y R#
 #######
 """
@@ -102,22 +101,26 @@ with spa.SPA() as model:
         return [body.detect(d, max_distance=4)[0] for d in angles]
     stim_radar = nengo.Node(detect)
     
-    # Ensemble that reads sensor values
+    # Random process for random turning
+    random_walk = nengo.processes.FilteredNoise(dist=nengo.dists.Gaussian(0, 0.5), synapse=nengo.synapses.Alpha(0.1))
+    random = nengo.Node(random_walk)
+    
+    # Ensemble that reads sensor and random values
     radar = nengo.Ensemble(n_neurons=N_NEURONS*10, dimensions=4, radius=4)
     nengo.Connection(stim_radar, radar[0:3])
+    nengo.Connection(random, radar[3])
 
     # Movement function, which outputs (speed, rotation) based on radar values
     def movement_func(x):
         left, forward, right, random = x
         # If random value exceeds thresholds, simply turn
-        if random > ROTATION_THRESHOLD:
-            return 0.1, 1
-        elif random < -ROTATION_THRESHOLD:
-            return 0.1, -1
+        if abs(random) > ROTATION_THRESHOLD:
+            rotation = abs(random) - forward/4
+            return 0.1, rotation if random > 0 else -rotation
         # Otherwise, perform simple wall-avoiding behavior
-        return forward - 0.5, right - left
+        return forward/4, right - left
     
-    # Movement function is driven only by radar values
+    # Movement function is driven only by radar values and random values
     nengo.Connection(radar, movement, function=movement_func)
     
     # Inhibiting radar values
@@ -127,13 +130,7 @@ with spa.SPA() as model:
     
     # Inhibitory connection between "being done" and "moving"
     nengo.Connection(done, radar.neurons, transform = [[-4]]*N_NEURONS*10)
-    
-    # Some testing with random processes (white noise)
-    p = nengo.Node(nengo.processes.FilteredNoise(synapse=nengo.synapses.Alpha(0.1)))
-    r = nengo.Ensemble(50,1)
-    nengo.Connection(p,r)
-    nengo.Connection(r, radar[3])
-    
+
     
 
 
