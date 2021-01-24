@@ -105,7 +105,7 @@ with spa.SPA() as model:
         return [body.detect(d, max_distance=4)[0] for d in angles]
     stim_radar = nengo.Node(detect)
     
-    # Node for random values, to perform random rotations (filtered noise)
+    # Node for random values (filtered noise), to perform random rotations
     random_process = nengo.processes.FilteredNoise(dist=nengo.dists.Gaussian(0, 0.5), 
                                                    synapse=nengo.synapses.Alpha(0.1))
     random = nengo.Node(random_process)
@@ -118,7 +118,7 @@ with spa.SPA() as model:
     # Movement function, which outputs (speed, rotation) based on radar values
     def movement_func(x):
         left, forward, right, random = x
-        # If random value exceeds thresholds, simply turn
+        # If random value exceeds thresholds, turn in the corresponding direction
         if abs(random) > ROTATION_THRESHOLD:
             rotation = abs(random) - forward/4
             return 0.1, rotation if random > 0 else -rotation
