@@ -215,13 +215,13 @@ with spa.SPA() as model:
     nengo.Connection(model.cconv_bmy.output, model.cconv_grbmy.B)
      
     # Specify what the convolved memory looks like when the desired number of colors has been encountered
-    model.seen_four = spa.State(D, vocab=bool_vocab)
-    model.seen_four_input = spa.Input(seen_four = ("*TRUE"*COLORS_TO_FIND)[1:])
+    model.target = spa.State(D, vocab=bool_vocab)
+    model.target_input = spa.Input(target = ("*TRUE"*COLORS_TO_FIND)[1:])
     
     # Compare desired and actual memory
     model.comparison = spa.Compare(D, vocab=bool_vocab)
     nengo.Connection(model.cconv_grbmy.output, model.comparison.inputA)
-    nengo.Connection(model.seen_four.output, model.comparison.inputB)
+    nengo.Connection(model.target.output, model.comparison.inputB)
     
     
     ## STOPPING MOVEMENT ##
